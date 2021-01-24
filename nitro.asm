@@ -43,9 +43,9 @@ start:     org     2000h
            ; Build information
 
            db      1+80h              ; month
-           db      14                 ; day
+           db      18                 ; day
            dw      2021               ; year
-           dw      0                  ; build
+           dw      2                  ; build
            db      'Written by David S. Madole',0
 
 
@@ -59,8 +59,8 @@ patchtbl:  dw      f_setbd, timalc - module
            dw      d_type, type - module
            dw      f_read, read - module
            dw      d_readkey, read - module
-           dw      f_input, input256 - module
-           dw      d_input, input256 - module
+           dw      f_input, input255 - module
+           dw      d_input, input255 - module
            dw      f_inputl, input - module
            db      0
 
@@ -90,46 +90,19 @@ versloop:  lda     r7                 ; compare minimum vs running versions
            sd
            irx
            lbnf    versfail           ; negative, running < minimum, so fail
-           bnz     checkarg           ; positive, running > minimum, so pass
+           bnz     chckhook           ; positive, running > minimum, so pass
 
            dec     rf                 ; zero, so equal, keep checking
            glo     rf
            bnz     versloop           ; if we exit this versions are same
 
 
-           ; Check supplied arguments to see if -k was specified, which
-           ; requests installation into "spare" kernel memory at 1eff-1fff
-           ; instead of high memory. This is a crutch to work around current
-           ; application unawareness of high memory management and will be
-           ; removed at some point in the future.
+           ; Check if R4 SCALL is already not pointing into BIOS, fail if so
 
-checkarg:  ldi     0                  ; by default, load to high mem
-           plo     re
-
-skipspac:  lda     ra                 ; look at next character, and if its
-           bz      allocmem           ; a zero, we are done
-
-           smi     ' '                ; skip any spaces
-           bz      skipspac
-
-           smi     '-'-' '            ; after any spaces needs to be a '-'
-           lbnz    optfail
-
-           lda     ra                 ; after the '-' needs to be a 'k'
-           smi     'k'
-           lbnz    optfail
-
-           lda     ra                 ; the 'k' needs to be the last thing
-           lbnz    optfail
-
-           inc     re                 ; set flag to install to kernel mem
-
-           glo     r2                 ; check that there is enough space
-           smi     0f8h               ; after the kernel, the stack is the
-           ghi     r2                 ; highest thing the kernel uses
-           smbi    01dh
-           lbdf    kernfail
-
+chckhook:  ghi     r4
+           smi     0f8h
+           lbnf    hookfail
+           
 
            ; Check where we are installing in memory and setup the length
            ; and appropriate address of the block. If loading to high memory
@@ -144,15 +117,7 @@ allocmem:  ldi     (end-module).1     ; get length of code to install
            plo     r8
            plo     r9
 
-           glo     re                 ; check where we are installing
-           bz     usehimem
-
-           ldi     1eh                ; if kernel memory, this is easy, just
-           phi     r8                 ; always setup the address for $1e00
-           phi     r9
-           br      copycode
-
-usehimem:  ldi     himem.1            ; pointer to top of memory variable
+           ldi     himem.1            ; pointer to top of memory variable
            phi     r7
            ldi     himem.0
            plo     r7
@@ -296,10 +261,15 @@ callpage:  glo     r9                  ; get address of ldi instruction
            sep     scall               ; detect baud rate
            dw      timalc
 
+           sex     r2
            ldi     success.1
            stxd
            ldi     success.0
            stxd
+
+           lbr     output
+
+           org     $ + 0ffh & 0ff00h
 
 output:    ldi     message.1
            phi     rf
@@ -320,36 +290,24 @@ output:    ldi     message.1
 
            sep     sret
 
-hookfail:  ldi     hookmsg.1
+hookfail:  sex     r2
+           ldi     hookmsg.1
            stxd
            ldi     hookmsg.0
            stxd
            br      output
 
-versfail:  ldi     vermsg.1
+versfail:  sex     r2
+           ldi     vermsg.1
            stxd
            ldi     vermsg.0
            stxd
            br      output
 
-optfail:   ldi     optmsg.1
-           stxd
-           ldi     optmsg.0
-           stxd
-           br      output
-
-kernfail:  ldi     kernmsg.1
-           stxd
-           ldi     kernmsg.0
-           stxd
-           br      output
-
-message:   db      'Nitro Soft UART Module Build 0.1 for Elf/OS',13,10,0
+message:   db      'Nitro Soft UART Module Build 1 for Elf/OS',13,10,0
 success:   db      'Copyright 2021 by David S Madole',13,10,0
-optmsg:    db      'ERROR: Invalid option specified for command',13,10,0
 vermsg:    db      'ERROR: Needs kernel version 0.3.1 or higher',13,10,0
-hookmsg:   db      'ERROR: Read or write routines already hooked',13,10,0
-kernmsg:   db      'ERROR: Insufficient kernel memory to install',13,10,0
+hookmsg:   db      'ERROR: SCALL is already diverted from BIO','S',13,10,0
 
 
            org     $ + 0ffh & 0ff00h
@@ -402,7 +360,7 @@ timeidle:  smi     1                   ;  so we don't try to measure in the
 timestrt:  SERP    timestrt            ; Stall here until start bit begins
 
            nop                         ; Burn a half a loop's time here so
-           sex     r2                  ;  that result rounds up if closer
+           ldi     1                   ;  that result rounds up if closer
 
 timecnt1:  phi     re                  ; Count up in units of 9 machine cycles
 timecnt2:  adi     1                   ;  per each loop, remembering the last
@@ -595,13 +553,12 @@ nochange:  lda     r6
            glo     re                    ; recover D
            br      newcall-1             ; transfer control to subroutine
 
-           org     $ + 0ffh & 0ff00h
+           org     ($ + 0ffh & 0ff00h) - 16
 
-input256:  ldi     0                   ; allow 256 input bytes
+input255:  ldi     0                   ; allow 256 input bytes
            phi     rc
            ldi     255
            plo     rc
-
 
            ; Input:
            ;   RC - maximum input size
@@ -660,7 +617,10 @@ inptloop:  sep     scall                ; get next character
            ; are at the end of existing input, or overwriting if we are in
            ; the middle somewhere. Either way output the character too.
 
-printchr:  ldn     rf                   ; are we at the end of current input?
+printchr:  smi     127-32
+           bz      delete2
+
+           ldn     rf                   ; are we at the end of current input?
            stxd                         ; remember answer
            bnz     inptchar
 
@@ -818,13 +778,24 @@ insloop2:  glo     ra                  ; back to starting point outputting
            dec     rf
            br      insloop2
 
-instdone:  inc     r2
+instdone:  dec     rc
+           inc     r2
            inc     r2
            ldn     r2
            plo     ra
            br      inptloop
 
            ; Deletecharacter from input at current location
+
+delete2:   glo     ra
+           bz      inptloop
+
+           dec     ra
+           dec     rf
+
+           ldi     8
+           sep     scall
+           dw      o_type
 
 deletech:  ldn     rf                   ; if at end then nothing to do
            bz      inptloop
@@ -834,13 +805,11 @@ deletech:  ldn     rf                   ; if at end then nothing to do
            ldi     0
            plo     ra
 
-delloop1:  ldn     rf                   ; push characters out until end
-           bz      delspace
-
-           inc     rf
+delloop1:  inc     rf
            ldn     rf
            dec     rf
            str     rf
+           bz      delspace
 
            sep     scall                ; output character as we go
            dw      o_type
@@ -853,18 +822,19 @@ delspace:  ldi     32
            sep     scall
            dw      o_type
 
-delloop2:  glo     ra                  ; back to starting point outputting
-           bz      deledone
-
-           ldi     8
+delloop2:  ldi     8
            sep     scall
            dw      o_type
+
+           glo     ra                  ; back to starting point outputting
+           bz      deledone
 
            dec     ra
            dec     rf
            br      delloop2
 
-deledone:  inc     r2
+deledone:  inc     rc
+           inc     r2
            ldn     r2
            plo     ra
            br      inptloop
