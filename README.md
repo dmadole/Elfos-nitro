@@ -10,8 +10,6 @@ PLEASE NOTE: This module is not compatible with “xr” and “xs” and very l
 
 NOTE ALSO: Unlike turbo which should run anywhere Elf/OS can run, this one needs to be built for specific EF input pins and signal polarity. This copy is built for Pico/Elf-like hardware, but if someone would like to try it on something else, I can make a different build for them.
 
-https://groups.io/g/cosmacelf/files/Madole/Elf%20OS/nitro.1
-
 Note that when you run the program, you must press a key so that it can detect baud rate, so don’t think it’s dead or crashed This needs to be done since it uses an measurement incompatible with BIOS due to the higher range. You can select a new baud rate on your terminal before pressing the key to change speed.
 
 Here are the editing commands. These are based on pure ASCII and not any particular terminal type:
