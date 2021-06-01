@@ -16,13 +16,13 @@
 
            ; Define non-published API elements
 
+biosvec    equ     03CEh
 version    equ     0400h
 himem      equ     0442h
 d_type     equ     0444h
 d_msg      equ     0447h
 d_readkey  equ     0454h
 d_input    equ     0457h
-biosvec    equ     0470h              ; hijacked, not an official assignment
 
            ; Pin and polarity definitions
 
@@ -43,10 +43,10 @@ start:     org     2000h
 
            ; Build information
 
-           db      5+80h              ; month
-           db      31                 ; day
+           db      6+80h              ; month
+           db      1                  ; day
            dw      2021               ; year
-           dw      4                  ; build
+           dw      5                  ; build
            db      'Written by David S. Madole',0
 
 minvers:   db      0,3,1              ; minimum kernel version needed
@@ -96,7 +96,9 @@ checkvec:  ldi     biosvec.1
            bdf     allocmem
 
            ldn     rb                 ; otherwise fail unless there is a
-           lbz     hookfail           ; new table pointed to by biosvec
+           adi     1                  ; new table pointed to by biosvec
+           shr                        ; this tests for either 00 or FF
+           lbz     hookfail           ; as either could mean uninitialized
            
 
            ; Allocate memory below himem for the driver code block, leaving
@@ -162,10 +164,13 @@ copycode:  lda     ra                 ; copy code to destination address
            ; If there is already a BIOS vector page allocated from a prior
            ; module installation, set R9 to point to it.
 
-           lda     rb                 ; test,but note the increment
-           bz      allocvec           ; if zero, need to allocate table
+           ldn     rb                 ; check is there is a bios vector
+           adi     1                  ; already, otherwise install one
+           shr                        ; this tests for either 00 or FF
+           bz      allocvec           ; as either could mean uninitialized
 
-           phi     r9                 ; if non-zero, set into r9
+           lda     rb                 ; if non-zero, set into r9
+           phi     r9
            ldn     rb
            plo     r9
 
@@ -177,21 +182,20 @@ copycode:  lda     ra                 ; copy code to destination address
            ; this is simple to do. Copy the page from FF00 into the new table
            ; and leave R9 pointing to it.
 
-allocvec:  ldi     0                  ; new block starts on page boundary
-           plo     r9
-           str     rb                 ; set biosvec lsb to point to it
-
-           ldn     r7                 ; get msb of himem which will be
+allocvec:  ldn     r7                 ; get msb of himem which will be
            phi     r9                 ; xxff so is same as start of block
-           dec     rb                 ; save into msb of biosvec
-           str     rb
+           str     rb                 ; save into msb of biosvec
            smi     1                  ; reduce himem by one memory page
            str     r7
 
-           ldi     0ffh               ; point to BIOS
+           ldi     0                  ; new block starts on page boundary
+           plo     r9
+           inc     rb                 ; save into lsb of biosvec
+           str     rb
+
+           plo     ra                 ; point to BIOS at FF00
+           ldi     0ffh
            phi     ra
-           ldi     0                  ; addresses at start of page
-           plo     ra
 
 copyvec:   lda     ra                 ; copy the whole page contents
            str     r9
@@ -318,7 +322,7 @@ versfail:  sex     r2
            stxd
            br      output
 
-message:   db      'Nitro Soft UART Module Build 4 for Elf/OS',13,10,0
+message:   db      'Nitro Soft UART Module Build 5 for Elf/OS',13,10,0
 success:   db      'Copyright 2021 by David S Madole',13,10,0
 vermsg:    db      'ERROR: Needs kernel version 0.3.1 or higher',13,10,0
 hookmsg:   db      'ERROR: SCALL is already diverted from BIO','S',13,10,0
