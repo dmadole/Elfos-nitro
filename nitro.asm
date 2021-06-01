@@ -318,7 +318,7 @@ versfail:  sex     r2
            stxd
            br      output
 
-message:   db      'Nitro Soft UART Module Build 1 for Elf/OS',13,10,0
+message:   db      'Nitro Soft UART Module Build 4 for Elf/OS',13,10,0
 success:   db      'Copyright 2021 by David S Madole',13,10,0
 vermsg:    db      'ERROR: Needs kernel version 0.3.1 or higher',13,10,0
 hookmsg:   db      'ERROR: SCALL is already diverted from BIO','S',13,10,0
