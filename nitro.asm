@@ -44,9 +44,9 @@ start:     org     2000h
            ; Build information
 
            db      6+80h              ; month
-           db      1                  ; day
+           db      14                 ; day
            dw      2021               ; year
-           dw      5                  ; build
+           dw      6                  ; build
            db      'Written by David S. Madole',0
 
 minvers:   db      0,3,1              ; minimum kernel version needed
@@ -75,11 +75,11 @@ versloop:  lda     r7                 ; compare minimum vs running versions
            sd
            irx
            lbnf    versfail           ; negative, running < minimum, so fail
-           bnz     checkvec           ; positive, running > minimum, so pass
+           lbnz    checkvec           ; positive, running > minimum, so pass
 
            dec     rf                 ; zero, so equal, keep checking
            glo     rf
-           bnz     versloop           ; if we exit this versions are same
+           lbnz    versloop           ; if we exit this versions are same
 
 
            ; Check if we are able to shim BIOS, either because we are the
@@ -93,7 +93,7 @@ checkvec:  ldi     biosvec.1
 
            ghi     r4                 ; if BIOS vector is still in ROM
            smi     0f8h               ; then continue installing
-           bdf     allocmem
+           lbdf    allocmem
 
            ldn     rb                 ; otherwise fail unless there is a
            adi     1                  ; new table pointed to by biosvec
@@ -147,18 +147,18 @@ allocmem:  ldi     (end-module).1     ; get length of code to install
            ; the copy. R9 will be used but R8 will still point to it after.
 
            ldi     module.1           ; get source address to copy from
-           phi     ra
+           phi     rd
            ldi     module.0
-           plo     ra
+           plo     rd
 
-copycode:  lda     ra                 ; copy code to destination address
+copycode:  lda     rd                 ; copy code to destination address
            str     r9
            inc     r9
            dec     rf
            glo     rf
-           bnz     copycode
+           lbnz    copycode
            ghi     rf
-           bnz     copycode
+           lbnz    copycode
 
 
            ; If there is already a BIOS vector page allocated from a prior
@@ -167,14 +167,14 @@ copycode:  lda     ra                 ; copy code to destination address
            ldn     rb                 ; check is there is a bios vector
            adi     1                  ; already, otherwise install one
            shr                        ; this tests for either 00 or FF
-           bz      allocvec           ; as either could mean uninitialized
+           lbz     allocvec           ; as either could mean uninitialized
 
            lda     rb                 ; if non-zero, set into r9
            phi     r9
            ldn     rb
            plo     r9
 
-           br      patching           ; go patch the routines we need to
+           lbr     patching           ; go patch the routines we need to
 
 
            ; Otherwise, get a page of memory for a new BIOS vector table.
@@ -193,15 +193,15 @@ allocvec:  ldn     r7                 ; get msb of himem which will be
            inc     rb                 ; save into lsb of biosvec
            str     rb
 
-           plo     ra                 ; point to BIOS at FF00
+           plo     rd                 ; point to BIOS at FF00
            ldi     0ffh
-           phi     ra
+           phi     rd
 
-copyvec:   lda     ra                 ; copy the whole page contents
+copyvec:   lda     rd                 ; copy the whole page contents
            str     r9
            inc     r9
            glo     r9
-           bnz     copyvec            ; loop until lsb wraps to zero
+           lbnz    copyvec            ; loop until lsb wraps to zero
 
            ghi     r9                 ; adjust back to start of page
            smi     1
@@ -214,14 +214,14 @@ copyvec:   lda     ra                 ; copy the whole page contents
 
            glo     r8                  ; get address of ldi instruction
            adi     (ldipage-module).0
-           plo     ra
+           plo     rd
            ghi     r8
            adci    (ldipage-module).1
-           phi     ra
+           phi     rd
 
-           inc     ra                  ; point to ldi argument and set
+           inc     rd                  ; point to ldi argument and set
            ghi     r9
-           str     ra
+           str     rd
 
            glo     r8                  ; calculate address of copied call
            adi     (newcall-module).0  ; routine and update into r4
@@ -243,43 +243,155 @@ patching:  ldi     patchtbl.1        ; Get point to table of patch points
            sex     r7                 ; add instructions will use table
 
 ptchloop:  lda     r7                 ; a zero marks end of the table
-           bz      ptchdone
+           lbz     ptchdone
 
-           phi     ra                 ; save msb of address but check if
+           phi     rd                 ; save msb of address but check if
            smi     0ffh               ; it's a bios ff00 vector, if it's
-           bnz     isntffxx           ; not then use as-is
+           lbnz    isntffxx           ; not then use as-is
 
            ghi     r9                 ; if the address is ffxx replace it
-           phi     ra                 ; with equivalent in the copy in RAM
+           phi     rd                 ; with equivalent in the copy in RAM
 
 isntffxx:  lda     r7                 ; get lsb of patch address
-           plo     ra
-           inc     ra                 ; skip the lbr opcode
+           plo     rd
+           inc     rd                 ; skip the lbr opcode
 
            inc     r7                 ; point to lsb of both addresses
-           inc     ra
+           inc     rd
            glo     r8                 ; add the offset in the table to the
            add                        ; base address in RAM and update the
-           str     ra                 ; address at the patch point
+           str     rd                 ; address at the patch point
 
            dec     r7                 ; point to msb of both addresses
-           dec     ra
+           dec     rd
            ghi     r8                 ; same as above for the msb
            adc
-           str     ra
+           str     rd
 
            inc     r7                 ; point to next entry in table and
            inc     r7                 ; continue until all are done
-           br      ptchloop
+           lbr     ptchloop
 
 
-           ; At this point we are done, auto-detect the baud rate, output
-           ; a success message, and end.
+           ; At this point we are done, set the baud rate either from command
+           ; line if supplied, or auto-baud if not or if supplied rate is not
+           ; valid, then output a success message, and end.
 
-ptchdone:  sep     r4
-           dw      timalc
+ptchdone:  SERREQ                     ; Make output in correct state
 
-           sex     r2                 ; put stack back to r2 and push
+           ldi     20000.1            ; Default clock speed is 4000 KHz
+           phi     rc                 ; times 5 to give baud rate factor,
+           ldi     20000.0            ; which is clock in Hertz divded by 8
+           plo     rc                 ; then divided by 25
+
+skipspc1:  lda     ra                 ; skip any whitespace
+           lbz     notvalid
+           smi     '!'
+           lbnf    skipspc1
+
+           smi     '-'-'!'            ; if next character is not a dash,
+           lbnz    getbaud            ; then no option
+
+           lda     ra                 ; if option is not 'k' then it is
+           smi     'k'                ; not valid
+           lbnz    notvalid
+
+skipspc2:  lda     ra                 ; skip any whitespace
+           lbz     notvalid
+           smi     '!'
+           lbnf    skipspc2
+
+           dec     ra                 ; back up to non-whitespace character
+
+           ghi     ra                 ; move input pointer to rf
+           phi     rf
+           glo     ra
+           plo     rf
+
+           sep     r4                 ; parse input number
+           dw      f_atoi
+           lbdf    notvalid           ; if not a number then abort
+
+           ghi     rf                 ; save updated pointer to just past
+           phi     ra                 ; number back into ra
+           glo     rf
+           plo     ra
+
+           ldi     0                  ; multiply clock in khz by 5
+           phi     rf
+           ldi     5
+           plo     rf
+
+           sep     r4                 ; do multiply
+           dw      f_mul16
+
+           ghi     rc                 ; if more than a word, then out of
+           lbnz    notvalid           ; range and not valid
+           glo     rc
+           lbnz    notvalid
+
+           ghi     rb
+           phi     rc
+           glo     rb
+           plo     rc
+
+skipspc3:  lda     ra                 ; skip any whitespace
+           lbz     notvalid
+           smi     '!'
+           lbnf    skipspc3
+
+getbaud:   dec     ra                 ; back up to non-whitespace character
+
+           ghi     ra                 ; move input pointer to rf
+           phi     rf
+           glo     ra
+           plo     rf
+
+           sep     r4                 ; parse input number
+           dw      f_atoi
+           lbdf    notvalid           ; if not a number then abort
+
+           ghi     rd                 ; transfer baud rate to rf
+           phi     rf
+           glo     rd
+           plo     rf
+
+           ldi     0                  ; divide baud rate by 25 to scale
+           phi     rd                 ; values to be managable in 16 bits
+           ldi     25
+           plo     rd
+
+           sep     r4                 ; do division
+           dw      f_div16
+
+           ghi     rb                 ; move quotient rb to divisor rd
+           phi     rd
+           glo     rb
+           plo     rd
+
+           ghi     rc                 ; get clock rate factor into
+           phi     rf                 ; dividend rf
+           glo     rc
+           plo     rf
+
+           sep     r4                 ; divide scaled clock rate by
+           dw      f_div16            ; scaled baud rate
+
+           ghi     rb                 ; if result is larger than 255
+           lbnz    notvalid           ; then out of range
+
+           glo     rb                 ; transfer baud rate factor to re
+           phi     re
+
+           sep     r4                 ; load compressed value into re.1
+           dw      timedone           ; if this fails, it will auto-baud
+
+           lbr     return             ; all done, return
+
+notvalid:  sep     r4                 ; if any argument not valid, then
+           dw      timalc             ; jsut auto-baud instead
+
+return:    sex     r2                 ; put stack back to r2 and push
            ldi     success.1          ; address of success message to print
            stxd
            ldi     success.0
@@ -313,16 +425,16 @@ hookfail:  sex     r2
            stxd
            ldi     hookmsg.0
            stxd
-           br      output
+           lbr     output
 
 versfail:  sex     r2
            ldi     vermsg.1
            stxd
            ldi     vermsg.0
            stxd
-           br      output
+           lbr     output
 
-message:   db      'Nitro Soft UART Module Build 5 for Elf/OS',13,10,0
+message:   db      'Nitro Soft UART Module Build 6 for Elf/OS',13,10,0
 success:   db      'Copyright 2021 by David S Madole',13,10,0
 vermsg:    db      'ERROR: Needs kernel version 0.3.1 or higher',13,10,0
 hookmsg:   db      'ERROR: SCALL is already diverted from BIO','S',13,10,0
