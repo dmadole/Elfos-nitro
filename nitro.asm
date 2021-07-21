@@ -41,9 +41,9 @@ start:     org     2000h
            ; Build information
 
            db      7+80h              ; month
-           db      20                 ; day
+           db      21                 ; day
            dw      2021               ; year
-           dw      7                  ; build
+           dw      8                  ; build
            db      'Written by David S. Madole',0
 
 
@@ -292,7 +292,7 @@ versfail:  sex     r2
            stxd
            lbr     return
 
-message:   db      'Nitro Soft UART Module Build 7 for Elf/OS',13,10,0
+message:   db      'Nitro Soft UART Module Build 8 for Elf/OS',13,10,0
 vermsg:    db      'ERROR: Needs kernel version 0.4.0 or higher',13,10,0
 
 
@@ -679,10 +679,7 @@ inptdone:  lda    rf                    ; make rf point to terminator at end
            bnz    inptdone
            dec    rf
 
-           ldi    13                   ; output carriage return line feed
-           sep    scall
-           dw     o_type
-           ldi    10
+           ldi    13                   ; output carriage return
            sep    scall
            dw     o_type
 
