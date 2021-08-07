@@ -1,6 +1,6 @@
 This module installs an alternative soft UART implementation for Elf/OS to replace the one in BIOS, but without actually modifying BIOS. The replacement UART is capable of running from 1900 to 21000 baud with a 4Mhz processor clock, and proportionally high or lower for other clocks. It can run at 9600 baud at 1.8Mhz.
 
-Builds later than 4 are compatible with (and only with) Elf/Os 4.0 and also incorporate other significant changes. The speed of string output has been substantially improved over not just prior versions of nitro, but also over the BIOS routines. Also, the enhanced editor commands have been removed, and those will be packaged as a separate utility in the future.
+Builds later than 7 are compatible with (and only with) Elf/Os 4.0 and also incorporate other significant changes. The speed of string output has been substantially improved over not just prior versions of nitro, but also over the BIOS routines. Also, the enhanced editor commands have been removed, and those will be packaged as a separate utility in the future.
 
 PLEASE NOTE: Nitro no longer intercepts BIOS console input and output calls. This means that all software now needs to be written using the correct Elf/OS console calls. If you get garbled or no output from certain programs, they will need to be updated.
 
